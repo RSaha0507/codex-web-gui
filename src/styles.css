@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-sidebar: #f0f4f8;
+  --text-primary: #1a1a1a;
+  --text-secondary: #57606a;
+  --accent-approve: #1a7f37;
+  --accent-reject: #cf222e;
+  --border: #d0d7de;
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-sidebar: #090d12;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-approve: #3fb950;
+  --accent-reject: #f85149;
+  --border: #30363d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+html {
+  background: var(--bg-sidebar);
+}
+
+body {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(900px 520px at -8% -10%, rgba(29, 155, 240, 0.18), transparent 60%),
+    radial-gradient(700px 420px at 108% 0%, rgba(63, 185, 80, 0.15), transparent 52%),
+    linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(circle at 50% 20%, black, transparent 74%);
+  opacity: 0.14;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.xterm {
+  height: 100%;
+}
+
+.xterm-viewport {
+  background-color: #0d1117 !important;
+}
