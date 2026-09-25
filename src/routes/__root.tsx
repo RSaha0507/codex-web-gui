@@ -24,6 +24,20 @@ export const Route = createRootRoute({
       {
         title: APP_NAME,
       },
+      {
+        name: 'description',
+        content:
+          'A web interface for managing Codex sessions, terminal outputs, and file diffs.',
+      },
+      {
+        property: 'og:title',
+        content: APP_NAME,
+      },
+      {
+        property: 'og:description',
+        content:
+          'A web interface for managing Codex sessions, terminal outputs, and file diffs.',
+      },
     ],
     links: [
       {

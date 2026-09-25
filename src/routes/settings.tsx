@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { FlaskConical, Shield, Sliders } from 'lucide-react'
+import GuardrailsSettings from '#/components/GuardrailsSettings'
 import { THEME_OPTIONS, THEME_STORAGE_KEY } from '#/lib/constants'
 import type { ThemeMode } from '#/lib/types'
 import { getSettingsData, saveSettings } from '#/server/functions'
@@ -45,7 +47,7 @@ function SettingsPage() {
         },
       })
       setForm(result.settings)
-      setStatus('Settings saved.')
+      setStatus('Settings saved successfully.')
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : 'Failed to save settings.',
@@ -56,181 +58,182 @@ function SettingsPage() {
   }
 
   return (
-    <main className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_360px]">
-      <form
-        onSubmit={(event) => void handleSubmit(event)}
-        className="rounded-[2.4rem] border border-white/10 bg-[rgba(7,11,16,0.84)] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.28)]"
-      >
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
-          Environment
-        </p>
-        <h2 className="mt-2 text-3xl font-semibold text-slate-100">
-          Runtime defaults and local persistence
-        </h2>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>OPENAI_API_KEY</span>
-            <input
-              type="password"
-              value={form.openAiApiKey}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  openAiApiKey: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Default model</span>
-            <input
-              value={form.defaultModel}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  defaultModel: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Default approval mode</span>
-            <select
-              value={form.defaultApprovalMode}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  defaultApprovalMode: event.target.value as typeof form.defaultApprovalMode,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            >
-              <option value="suggest">suggest</option>
-              <option value="auto-edit">auto-edit</option>
-              <option value="full-auto">full-auto</option>
-            </select>
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>Default working directory</span>
-            <input
-              value={form.defaultCwd}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  defaultCwd: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-            <span>SQLite data directory</span>
-            <input
-              value={form.dataDir}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  dataDir: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Host</span>
-            <input
-              value={form.host}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  host: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Port</span>
-            <input
-              value={form.port}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  port: event.target.value,
-                }))
-              }
-              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            />
-          </label>
-        </div>
-
-        <div className="mt-6 flex items-center justify-between gap-4">
-          <label className="space-y-2 text-sm text-slate-300">
-            <span>Theme</span>
-            <select
-              value={theme}
-              onChange={(event) => setTheme(event.target.value as ThemeMode)}
-              className="w-40 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400/40"
-            >
-              {THEME_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-full border border-cyan-400/30 bg-cyan-400/12 px-5 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? 'Saving…' : 'Save Settings'}
-          </button>
-        </div>
-
-        {status ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-slate-200">
-            {status}
+    <main className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_380px]">
+        {/* Environment & Configuration Form */}
+        <form
+          onSubmit={(event) => void handleSubmit(event)}
+          className="rounded-[2.4rem] border border-white/10 bg-[rgba(7,11,16,0.85)] p-6 sm:p-8 shadow-[0_28px_90px_rgba(0,0,0,0.28)] space-y-6"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+              Runtime Configuration
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-100">
+              Environment & Model Defaults
+            </h2>
           </div>
-        ) : null}
-      </form>
 
-      <aside className="space-y-4 rounded-[2.4rem] border border-white/10 bg-[rgba(7,11,16,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
-        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5">
-          <p className="text-sm font-semibold text-slate-100">Codex CLI</p>
-          <p className="mt-2 text-sm text-slate-400">
-            {data.codexHealth.available
-              ? `Detected ${data.codexHealth.version}`
-              : data.codexHealth.message || 'Unavailable'}
-          </p>
-        </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs text-slate-300 sm:col-span-2">
+              <span>OPENAI_API_KEY</span>
+              <input
+                type="password"
+                value={form.openAiApiKey}
+                placeholder="sk-..."
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    openAiApiKey: event.target.value,
+                  }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-2.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              />
+            </label>
 
-        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5">
-          <p className="text-sm font-semibold text-slate-100">Database</p>
-          <p className="mt-2 break-words text-sm text-slate-400">
-            {data.dbInfo.path}
-          </p>
-          {data.dbInfo.warning ? (
-            <p className="mt-2 text-sm text-amber-200">{data.dbInfo.warning}</p>
-          ) : null}
-        </div>
+            <label className="space-y-1.5 text-xs text-slate-300">
+              <span>Default Model</span>
+              <input
+                value={form.defaultModel}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    defaultModel: event.target.value,
+                  }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-2.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              />
+            </label>
 
-        <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 text-sm text-slate-400">
-          Host and port changes affect the dev or preview server on the next
-          restart. Session spawning reads the `.env` file directly, so API key
-          and model updates apply immediately.
-        </div>
-      </aside>
+            <label className="space-y-1.5 text-xs text-slate-300">
+              <span>Default Approval Mode</span>
+              <select
+                value={form.defaultApprovalMode}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    defaultApprovalMode: event.target.value as typeof form.defaultApprovalMode,
+                  }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-[#090d12] px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              >
+                <option value="suggest">suggest</option>
+                <option value="auto-edit">auto-edit</option>
+                <option value="full-auto">full-auto</option>
+              </select>
+            </label>
+
+            <label className="space-y-1.5 text-xs text-slate-300 sm:col-span-2">
+              <span>Default Working Directory</span>
+              <input
+                value={form.defaultCwd}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    defaultCwd: event.target.value,
+                  }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-2.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              />
+            </label>
+
+            <label className="space-y-1.5 text-xs text-slate-300 sm:col-span-2">
+              <span>Verification Test Command</span>
+              <input
+                value={form.testCommand || 'npm test'}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    testCommand: event.target.value,
+                  }))
+                }
+                placeholder="e.g. npm test or npx vitest run"
+                className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-2.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              />
+            </label>
+
+            <label className="space-y-1.5 text-xs text-slate-300 sm:col-span-2">
+              <span>SQLite Data Directory</span>
+              <input
+                value={form.dataDir}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    dataDir: event.target.value,
+                  }))
+                }
+                className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-2.5 font-mono text-xs text-slate-100 outline-none focus:border-cyan-400/40"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-white/10 pt-4">
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <span>Theme:</span>
+              <select
+                value={theme}
+                onChange={(event) => setTheme(event.target.value as ThemeMode)}
+                className="rounded-xl border border-white/10 bg-[#090d12] px-3 py-1.5 text-xs text-slate-100"
+              >
+                {THEME_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-full border border-cyan-400/30 bg-cyan-400/15 px-6 py-2.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25 disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save Settings'}
+            </button>
+          </div>
+
+          {status && (
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-200">
+              {status}
+            </div>
+          )}
+        </form>
+
+        {/* System Diagnostics Info */}
+        <aside className="space-y-4 rounded-[2.4rem] border border-white/10 bg-[rgba(7,11,16,0.85)] p-6 shadow-xl">
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Codex CLI Diagnostic
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-100">
+              {data.codexHealth.available
+                ? `Detected ${data.codexHealth.version}`
+                : data.codexHealth.message || 'Unavailable'}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Database Path
+            </p>
+            <p className="mt-1 break-words font-mono text-xs text-slate-300">
+              {data.dbInfo.path}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/5 bg-black/20 p-4 text-xs text-slate-400 space-y-2">
+            <p className="font-semibold text-slate-300">Real-time Persistence</p>
+            <p>
+              Session streams, checkpoints, test logs, file snapshots, and guardrail policies are persisted in SQLite WAL mode.
+            </p>
+          </div>
+        </aside>
+      </div>
+
+      {/* Guardrails Policies & Rules Section */}
+      <section className="rounded-[2.4rem] border border-white/10 bg-[rgba(7,11,16,0.85)] p-6 sm:p-8 shadow-xl">
+        <GuardrailsSettings initialRules={data.guardrailRules} />
+      </section>
     </main>
   )
 }

@@ -18,6 +18,7 @@ import {
   addAssistantOutput,
   addFileChange,
   getLatestFileChange,
+  listGuardrailRules,
   updateSessionStatus,
 } from './sessions'
 import { emitSessionEvent } from './stream'
@@ -94,6 +95,7 @@ function flushRuntimeBuffer(runtime: SessionRuntime): void {
   emitOutputEvent(runtime.session.id, chunk)
 
   const latestChange = getLatestFileChange(runtime.session.id)
+  const guardrailRules = listGuardrailRules()
   const approvalRequest = detectApprovalRequest(
     chunk,
     latestChange
@@ -102,9 +104,21 @@ function flushRuntimeBuffer(runtime: SessionRuntime): void {
           diff: latestChange.diff,
         }
       : null,
+    guardrailRules,
   )
 
   if (approvalRequest) {
+    // If guardrail rule matched auto_approve, automatically send approval
+    if (approvalRequest.matchedRule?.action === 'auto_approve') {
+      setTimeout(() => {
+        try {
+          writeApprovalToSession(runtime.session.id, 'y')
+        } catch {
+          // ignore race
+        }
+      }, 200)
+    }
+
     emitSessionEvent(runtime.session.id, {
       type: 'approval_request',
       sessionId: runtime.session.id,

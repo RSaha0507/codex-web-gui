@@ -22,22 +22,33 @@ export const streamEventTypeSchema = z.enum([
   'approval_request',
   'session_end',
   'error',
+  'test_run',
+  'checkpoint',
 ])
 export type StreamEventType = z.infer<typeof streamEventTypeSchema>
 
-export const sessionIdSchema = z.uuid()
+export const sessionIdSchema = z.string().uuid()
 
 export const newSessionSchema = z.object({
   cwd: z.string().trim().min(1, 'Working directory is required'),
   model: z.string().trim().default('gpt-5-codex'),
   approvalMode: approvalModeSchema.default('suggest'),
-  systemPrompt: z.string().trim().max(10_000).optional().default(''),
+  systemPrompt: z.string().trim().max(50_000).optional().default(''),
+  presetId: z.string().optional(),
 })
 export type NewSessionInput = z.infer<typeof newSessionSchema>
 
 export const promptInputSchema = z.object({
   sessionId: sessionIdSchema,
   text: z.string().trim().min(1, 'Prompt cannot be empty'),
+  attachedFiles: z
+    .array(
+      z.object({
+        path: z.string(),
+        name: z.string(),
+      }),
+    )
+    .optional(),
 })
 export type PromptInput = z.infer<typeof promptInputSchema>
 
@@ -61,6 +72,8 @@ export const saveSettingsSchema = z.object({
   dataDir: z.string().trim().min(1),
   host: z.string().trim().min(1).default('127.0.0.1'),
   port: z.string().trim().regex(/^\d+$/).default('3000'),
+  autoRunTestsOnDiff: z.boolean().default(false),
+  testCommand: z.string().trim().default('npm test'),
 })
 export type SaveSettingsInput = z.infer<typeof saveSettingsSchema>
 
@@ -75,6 +88,8 @@ export interface AppSettings {
   dbFile: string
   host: string
   port: string
+  autoRunTestsOnDiff?: boolean
+  testCommand?: string
 }
 
 export interface CodexHealth {
@@ -126,6 +141,11 @@ export interface ApprovalRequestPayload {
   description: string
   filePath: string | null
   diff: string | null
+  matchedRule?: {
+    id: string
+    name: string
+    action: 'auto_approve' | 'require_approval' | 'block'
+  } | null
 }
 
 export interface SessionEndPayload {
@@ -197,11 +217,131 @@ export interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
+// ---- Feature 1: Granular Hunks & Diff Workbench ----
+export interface DiffHunkLine {
+  type: 'add' | 'delete' | 'context' | 'header'
+  text: string
+  oldLineNumber?: number
+  newLineNumber?: number
+}
+
+export interface ParsedDiffHunk {
+  id: string
+  index: number
+  header: string
+  oldStart: number
+  oldCount: number
+  newStart: number
+  newCount: number
+  lines: DiffHunkLine[]
+  isAccepted: boolean
+  rawText: string
+}
+
+export interface ParsedFileDiff {
+  filePath: string
+  oldPath: string
+  newPath: string
+  hunks: ParsedDiffHunk[]
+  addedCount: number
+  deletedCount: number
+}
+
+export type DiffViewMode = 'unified' | 'split'
+
+// ---- Feature 2: Context Drawer & Rule Presets ----
+export interface PinnedContextFile {
+  path: string
+  name: string
+  previewSnippet?: string
+}
+
+export interface InstructionPreset {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  category: 'persona' | 'guideline' | 'testing' | 'security' | 'custom'
+  tags: string[]
+  isDefault?: boolean
+  createdAt: number
+}
+
+export interface DiscoveredRuleFile {
+  name: string
+  path: string
+  relativePath: string
+  content: string
+  fileType: 'codex' | 'cursorrules' | 'claude' | 'copilot' | 'custom'
+}
+
+// ---- Feature 3: Checkpoints & Token/Cost Counter ----
+export interface CheckpointRecord {
+  id: string
+  sessionId: string
+  messageId?: string | null
+  promptText: string
+  affectedFiles: string[]
+  fileChangesCount: number
+  status: 'active' | 'rolled_back'
+  createdAt: number
+}
+
+export interface TokenMetrics {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  estimatedCostUsd: number
+  model: string
+  promptCostPer1k: number
+  completionCostPer1k: number
+}
+
+// ---- Feature 4: Guardrails & Test Runner ----
+export type GuardrailAction = 'auto_approve' | 'require_approval' | 'block'
+
+export interface GuardrailRule {
+  id: string
+  name: string
+  description: string
+  pattern: string
+  action: GuardrailAction
+  enabled: boolean
+  isSystem?: boolean
+  createdAt: number
+}
+
+export interface TestRunResult {
+  id: string
+  sessionId: string
+  command: string
+  exitCode: number
+  stdout: string
+  stderr: string
+  durationMs: number
+  passed: boolean
+  createdAt: number
+}
+
+// ---- Feature 5: Workspaces / Multi-Project ----
+export interface WorkspaceRecord {
+  id: string
+  path: string
+  name: string
+  lastOpenedAt: number
+  sessionCount: number
+  createdAt: number
+}
+
+// ---- Page Data Interfaces ----
 export interface HomeData {
   sessions: SessionRecord[]
   settings: AppSettings
   codexHealth: CodexHealth
   dbInfo: DbInfo
+  workspaces: WorkspaceRecord[]
+  presets: InstructionPreset[]
+  guardrailRules: GuardrailRule[]
 }
 
 export interface SessionPageData {
@@ -213,12 +353,23 @@ export interface SessionPageData {
   dbInfo: DbInfo
   codexHealth: CodexHealth
   isLive: boolean
+  checkpoints: CheckpointRecord[]
+  workspaces: WorkspaceRecord[]
+  presets: InstructionPreset[]
+  guardrailRules: GuardrailRule[]
+  discoveredRules: DiscoveredRuleFile[]
+  tokenMetrics: TokenMetrics
+  latestTestRun: TestRunResult | null
+  settings: AppSettings
 }
 
 export interface SettingsPageData {
   settings: AppSettings
   dbInfo: DbInfo
   codexHealth: CodexHealth
+  guardrailRules: GuardrailRule[]
+  presets: InstructionPreset[]
+  workspaces: WorkspaceRecord[]
 }
 
 export function isUuid(value: string): boolean {
