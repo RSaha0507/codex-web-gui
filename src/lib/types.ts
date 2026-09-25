@@ -287,14 +287,72 @@ export interface CheckpointRecord {
   createdAt: number
 }
 
+export interface TokenTurnDetail {
+  turnIndex: number
+  messageId: string
+  promptPreview: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  turnCostUsd: number
+  timestamp: number
+}
+
+export interface ModelPricingComparison {
+  modelName: string
+  estimatedCostUsd: number
+  promptCostPer1M: number
+  completionCostPer1M: number
+}
+
 export interface TokenMetrics {
   promptTokens: number
   completionTokens: number
+  systemTokens: number
   totalTokens: number
   estimatedCostUsd: number
   model: string
   promptCostPer1k: number
   completionCostPer1k: number
+  contextLimit: number
+  contextUsedPercent: number
+  turns: TokenTurnDetail[]
+  comparisons: ModelPricingComparison[]
+}
+
+// ---- Feature 6: Activity Logs & Audit System ----
+export type ActivityLogEventType =
+  | 'session_created'
+  | 'session_interrupted'
+  | 'session_ended'
+  | 'prompt_submitted'
+  | 'file_diff_staged'
+  | 'hunk_accepted'
+  | 'hunk_rejected'
+  | 'patch_applied'
+  | 'direct_file_edited'
+  | 'auto_approved_by_rule'
+  | 'manual_approved'
+  | 'manual_rejected'
+  | 'test_run_started'
+  | 'test_run_passed'
+  | 'test_run_failed'
+  | 'checkpoint_created'
+  | 'checkpoint_rollback'
+  | 'workspace_switched'
+  | 'guardrail_updated'
+  | 'preset_applied'
+
+export type ActivityActor = 'user' | 'guardrail' | 'codex' | 'system'
+
+export interface ActivityLogRecord {
+  id: string
+  sessionId: string | null
+  eventType: ActivityLogEventType
+  summary: string
+  details: Record<string, unknown>
+  actor: ActivityActor
+  createdAt: number
 }
 
 // ---- Feature 4: Guardrails & Test Runner ----
@@ -342,6 +400,7 @@ export interface HomeData {
   workspaces: WorkspaceRecord[]
   presets: InstructionPreset[]
   guardrailRules: GuardrailRule[]
+  activityLogs: ActivityLogRecord[]
 }
 
 export interface SessionPageData {
@@ -360,6 +419,7 @@ export interface SessionPageData {
   discoveredRules: DiscoveredRuleFile[]
   tokenMetrics: TokenMetrics
   latestTestRun: TestRunResult | null
+  activityLogs: ActivityLogRecord[]
   settings: AppSettings
 }
 

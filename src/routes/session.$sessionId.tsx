@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
+  Activity,
+  BarChart3,
+  Coins,
   Columns,
   FlaskConical,
   GitBranch,
@@ -8,6 +11,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react'
+import ActivityLogsViewer from '#/components/ActivityLogsViewer'
 import ApprovalBar from '#/components/ApprovalBar'
 import ContextDrawer from '#/components/ContextDrawer'
 import DiffViewer from '#/components/DiffViewer'
@@ -21,6 +25,7 @@ import TimelineReplay from '#/components/TimelineReplay'
 import TokenCostBadge from '#/components/TokenCostBadge'
 import WorkspaceSwitcher from '#/components/WorkspaceSwitcher'
 import type {
+  ActivityLogRecord,
   ApprovalRequestPayload,
   DiscoveredRuleFile,
   FileChangeRecord,
@@ -30,6 +35,7 @@ import type {
 } from '#/lib/types'
 import {
   approveEdit,
+  clearActivityLogsFn,
   createSession,
   endSession,
   getSessionPageData,
@@ -57,6 +63,9 @@ function SessionPage() {
   const [historyAnsi, setHistoryAnsi] = useState(initialData.historyAnsi)
   const [checkpoints, setCheckpoints] = useState(initialData.checkpoints)
   const [tokenMetrics, setTokenMetrics] = useState(initialData.tokenMetrics)
+  const [activityLogs, setActivityLogs] = useState<ActivityLogRecord[]>(
+    initialData.activityLogs || [],
+  )
   const [pinnedFiles, setPinnedFiles] = useState<PinnedContextFile[]>([])
   const [approvalRequest, setApprovalRequest] =
     useState<ApprovalRequestPayload | null>(null)
@@ -67,7 +76,7 @@ function SessionPage() {
     'idle' | 'connecting' | 'live' | 'disconnected'
   >(initialData.isLive ? 'connecting' : 'idle')
   const [processing, setProcessing] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<'diffs' | 'timeline'>('diffs')
+  const [sidebarTab, setSidebarTab] = useState<'diffs' | 'timeline' | 'logs'>('diffs')
   const [isTestModalOpen, setIsTestModalOpen] = useState(false)
   const busyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -78,6 +87,7 @@ function SessionPage() {
     setHistoryAnsi(initialData.historyAnsi)
     setCheckpoints(initialData.checkpoints)
     setTokenMetrics(initialData.tokenMetrics)
+    setActivityLogs(initialData.activityLogs || [])
     setApprovalRequest(null)
     setApprovalBusy(false)
     setRefreshNonce(0)
@@ -122,9 +132,19 @@ function SessionPage() {
       setFileChanges(nextData.fileChanges)
       setCheckpoints(nextData.checkpoints)
       setTokenMetrics(nextData.tokenMetrics)
+      setActivityLogs(nextData.activityLogs || [])
       setRefreshNonce((n) => n + 1)
     } catch {
       // ignore reload errors
+    }
+  }
+
+  async function handleClearActivityLogs(): Promise<void> {
+    try {
+      await clearActivityLogsFn({ data: { sessionId: session.id } })
+      setActivityLogs([])
+    } catch {
+      // ignore clear errors
     }
   }
 
@@ -350,7 +370,7 @@ function SessionPage() {
           {/* Action Toolbar */}
           <div className="flex items-center gap-2">
             {/* Token & Cost Counter */}
-            <TokenCostBadge metrics={tokenMetrics} />
+            <TokenCostBadge metrics={tokenMetrics} sessionId={session.id} />
 
             {/* Test Suite Trigger */}
             <button
@@ -449,23 +469,23 @@ function SessionPage() {
       {/* Right Sidebar: Interactive Multi-File Patch Workbench & Timeline Replay */}
       <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(7,11,16,0.85)] shadow-xl">
         {/* Tab Switcher */}
-        <div className="flex border-b border-white/10 bg-white/2 px-4 py-2">
+        <div className="flex border-b border-white/10 bg-white/2 px-3 py-2 overflow-x-auto">
           <button
             type="button"
             onClick={() => setSidebarTab('diffs')}
-            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
               sidebarTab === 'diffs'
                 ? 'bg-cyan-400/15 text-cyan-200 border border-cyan-400/30'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Layers className="h-3.5 w-3.5" />
-            <span>Diff Workbench ({fileChanges.length})</span>
+            <span>Diffs ({fileChanges.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setSidebarTab('timeline')}
-            className={`ml-1 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+            className={`ml-1 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
               sidebarTab === 'timeline'
                 ? 'bg-cyan-400/15 text-cyan-200 border border-cyan-400/30'
                 : 'text-slate-400 hover:text-slate-200'
@@ -473,6 +493,18 @@ function SessionPage() {
           >
             <History className="h-3.5 w-3.5" />
             <span>Timeline ({checkpoints.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarTab('logs')}
+            className={`ml-1 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+              sidebarTab === 'logs'
+                ? 'bg-cyan-400/15 text-cyan-200 border border-cyan-400/30'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Activity className="h-3.5 w-3.5" />
+            <span>Logs ({activityLogs.length})</span>
           </button>
         </div>
 
@@ -484,11 +516,18 @@ function SessionPage() {
               fileChanges={fileChanges}
               onFileSaved={() => void reloadPageData()}
             />
-          ) : (
+          ) : sidebarTab === 'timeline' ? (
             <TimelineReplay
               sessionId={session.id}
               checkpoints={checkpoints}
               onRollbackComplete={() => void reloadPageData()}
+            />
+          ) : (
+            <ActivityLogsViewer
+              logs={activityLogs}
+              sessionId={session.id}
+              onRefresh={() => void reloadPageData()}
+              onClearLogs={() => void handleClearActivityLogs()}
             />
           )}
         </div>

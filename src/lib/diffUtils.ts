@@ -297,13 +297,40 @@ export function detectApprovalRequest(
 /**
  * Model Token & Cost Estimator.
  */
-const MODEL_PRICING: Record<string, { prompt: number; completion: number }> = {
-  'gpt-5-codex': { prompt: 0.005, completion: 0.015 },
-  'gpt-4o': { prompt: 0.0025, completion: 0.01 },
-  'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
-  'o1-preview': { prompt: 0.015, completion: 0.06 },
-  'o3-mini': { prompt: 0.0011, completion: 0.0044 },
-  'claude-3-5-sonnet': { prompt: 0.003, completion: 0.015 },
+const MODEL_PRICING: Record<
+  string,
+  { prompt: number; completion: number; contextLimit: number }
+> = {
+  'gpt-5-codex': { prompt: 0.005, completion: 0.015, contextLimit: 128000 },
+  'gpt-4o': { prompt: 0.0025, completion: 0.01, contextLimit: 128000 },
+  'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006, contextLimit: 128000 },
+  'o1-preview': { prompt: 0.015, completion: 0.06, contextLimit: 128000 },
+  'o3-mini': { prompt: 0.0011, completion: 0.0044, contextLimit: 200000 },
+  'claude-3-5-sonnet': {
+    prompt: 0.003,
+    completion: 0.015,
+    contextLimit: 200000,
+  },
+  'claude-3-7-sonnet': {
+    prompt: 0.003,
+    completion: 0.015,
+    contextLimit: 200000,
+  },
+  'gemini-2.5-pro': {
+    prompt: 0.00125,
+    completion: 0.005,
+    contextLimit: 1000000,
+  },
+  'gemini-2.5-flash': {
+    prompt: 0.000075,
+    completion: 0.0003,
+    contextLimit: 1000000,
+  },
+  'deepseek-r1': {
+    prompt: 0.00055,
+    completion: 0.00219,
+    contextLimit: 128000,
+  },
 }
 
 export function estimateTokens(text: string): number {
@@ -318,9 +345,15 @@ export function calculateSessionTokenMetrics(
   userPromptsText: string,
   assistantOutputText: string,
   systemPromptText = '',
+  messages: Array<{
+    id: string
+    role: string
+    content: string
+    createdAt: number
+  }> = [],
 ): TokenMetrics {
   const normModel = model.toLowerCase()
-  let pricing = { prompt: 0.003, completion: 0.012 }
+  let pricing = { prompt: 0.003, completion: 0.012, contextLimit: 128000 }
 
   for (const [key, rates] of Object.entries(MODEL_PRICING)) {
     if (normModel.includes(key) || key.includes(normModel)) {
@@ -329,8 +362,9 @@ export function calculateSessionTokenMetrics(
     }
   }
 
-  const promptTokens =
-    estimateTokens(userPromptsText) + estimateTokens(systemPromptText)
+  const systemTokens = estimateTokens(systemPromptText)
+  const userPromptTokens = estimateTokens(userPromptsText)
+  const promptTokens = userPromptTokens + systemTokens
   const completionTokens = estimateTokens(stripAnsi(assistantOutputText))
   const totalTokens = promptTokens + completionTokens
 
@@ -338,13 +372,62 @@ export function calculateSessionTokenMetrics(
     (promptTokens / 1000) * pricing.prompt +
     (completionTokens / 1000) * pricing.completion
 
+  const contextLimit = pricing.contextLimit
+  const contextUsedPercent = Number(
+    Math.min(100, (totalTokens / contextLimit) * 100).toFixed(2),
+  )
+
+  // Compute Turn-by-Turn Token Breakdown
+  const userMessages = messages.filter((m) => m.role === 'user')
+  const turns = userMessages.map((m, idx) => {
+    const pTokens = estimateTokens(m.content)
+    // Approximate completion for this turn if available
+    const turnCompletionTokens = Math.ceil(
+      completionTokens / Math.max(1, userMessages.length),
+    )
+    const turnTotal = pTokens + turnCompletionTokens
+    const turnCost =
+      (pTokens / 1000) * pricing.prompt +
+      (turnCompletionTokens / 1000) * pricing.completion
+
+    return {
+      turnIndex: idx + 1,
+      messageId: m.id,
+      promptPreview:
+        m.content.slice(0, 60) + (m.content.length > 60 ? '…' : ''),
+      promptTokens: pTokens,
+      completionTokens: turnCompletionTokens,
+      totalTokens: turnTotal,
+      turnCostUsd: Number(turnCost.toFixed(5)),
+      timestamp: m.createdAt,
+    }
+  })
+
+  // Compare against popular models
+  const comparisons = Object.entries(MODEL_PRICING).map(([modelKey, rate]) => {
+    const cost =
+      (promptTokens / 1000) * rate.prompt +
+      (completionTokens / 1000) * rate.completion
+    return {
+      modelName: modelKey,
+      estimatedCostUsd: Number(cost.toFixed(5)),
+      promptCostPer1M: Number((rate.prompt * 1000).toFixed(2)),
+      completionCostPer1M: Number((rate.completion * 1000).toFixed(2)),
+    }
+  })
+
   return {
     promptTokens,
     completionTokens,
+    systemTokens,
     totalTokens,
     estimatedCostUsd: Number(estimatedCostUsd.toFixed(5)),
     model,
     promptCostPer1k: pricing.prompt,
     completionCostPer1k: pricing.completion,
+    contextLimit,
+    contextUsedPercent,
+    turns,
+    comparisons,
   }
 }

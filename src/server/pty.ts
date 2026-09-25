@@ -15,6 +15,7 @@ import { detectApprovalRequest } from './diff'
 import { getCodexLaunchSpec } from './health'
 import { createSessionWatcher } from './watcher'
 import {
+  addActivityLog,
   addAssistantOutput,
   addFileChange,
   getLatestFileChange,
@@ -110,9 +111,21 @@ function flushRuntimeBuffer(runtime: SessionRuntime): void {
   if (approvalRequest) {
     // If guardrail rule matched auto_approve, automatically send approval
     if (approvalRequest.matchedRule?.action === 'auto_approve') {
+      const rule = approvalRequest.matchedRule
       setTimeout(() => {
         try {
           writeApprovalToSession(runtime.session.id, 'y')
+          addActivityLog({
+            sessionId: runtime.session.id,
+            eventType: 'auto_approved_by_rule',
+            summary: `Auto-approved by guardrail: ${rule.name}`,
+            details: {
+              ruleId: rule.id,
+              ruleName: rule.name,
+              description: approvalRequest.description,
+            },
+            actor: 'guardrail',
+          })
         } catch {
           // ignore race
         }

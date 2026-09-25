@@ -23,9 +23,11 @@ import {
 } from './files'
 import { getCodexHealth } from './health'
 import {
+  addActivityLog,
   addFileChange,
   addSystemMessage,
   addUserMessage,
+  clearActivityLogs,
   createSessionRecord,
   deleteGuardrailRule,
   deleteInstructionPreset,
@@ -38,6 +40,7 @@ import {
   getSessionHistoryAnsi,
   getSessionMessages,
   hasUserMessages,
+  listActivityLogs,
   listGuardrailRules,
   listInstructionPresets,
   listSessions,
@@ -90,6 +93,7 @@ async function buildHomeData(): Promise<HomeData> {
     workspaces: listWorkspaces(),
     presets: listInstructionPresets(),
     guardrailRules: listGuardrailRules(),
+    activityLogs: listActivityLogs({ limit: 50 }),
   }
 }
 
@@ -103,7 +107,7 @@ async function buildSessionPageData(sessionId: string): Promise<SessionPageData>
   // Discovered rules from active directory
   const discoveredRules = await discoverWorkspaceRules(session.cwd)
 
-  // Calculate Token & Cost Metrics
+  // Calculate Token & Cost Metrics with turn-by-turn breakdown
   const userPrompts = messages
     .filter((m) => m.role === 'user')
     .map((m) => m.content)
@@ -118,10 +122,12 @@ async function buildSessionPageData(sessionId: string): Promise<SessionPageData>
     userPrompts,
     assistantOutput || historyAnsi,
     session.systemPrompt,
+    messages,
   )
 
   const checkpoints = getSessionCheckpoints(sessionId)
   const latestTestRun = getLatestTestRun(sessionId)
+  const activityLogs = listActivityLogs({ sessionId, limit: 100 })
 
   return {
     session,
@@ -139,6 +145,7 @@ async function buildSessionPageData(sessionId: string): Promise<SessionPageData>
     discoveredRules,
     tokenMetrics,
     latestTestRun,
+    activityLogs,
     settings,
   }
 }
@@ -237,6 +244,13 @@ export const approveEdit = createServerFn({ method: 'POST' })
   .validator(sessionActionSchema)
   .handler(async ({ data }) => {
     writeApprovalToSession(data.sessionId, 'y')
+    addActivityLog({
+      sessionId: data.sessionId,
+      eventType: 'manual_approved',
+      summary: 'Manually approved proposed execution / patch',
+      details: {},
+      actor: 'user',
+    })
     return {
       ok: true,
     }
@@ -246,6 +260,13 @@ export const rejectEdit = createServerFn({ method: 'POST' })
   .validator(sessionActionSchema)
   .handler(async ({ data }) => {
     writeApprovalToSession(data.sessionId, 'n')
+    addActivityLog({
+      sessionId: data.sessionId,
+      eventType: 'manual_rejected',
+      summary: 'Manually rejected proposed execution / patch',
+      details: {},
+      actor: 'user',
+    })
     return {
       ok: true,
     }
@@ -327,6 +348,14 @@ export const saveDirectFileEdit = createServerFn({ method: 'POST' })
       snapshotAfter: data.content,
     })
 
+    addActivityLog({
+      sessionId: session.id,
+      eventType: 'direct_file_edited',
+      summary: `In-browser direct edit saved: ${data.filePath}`,
+      details: { filePath: data.filePath, bytes: data.content.length },
+      actor: 'user',
+    })
+
     return {
       ok: true,
       fileChange,
@@ -370,6 +399,18 @@ export const applyAcceptedHunks = createServerFn({ method: 'POST' })
       diff,
       snapshotBefore: preview.content,
       snapshotAfter: newContent,
+    })
+
+    addActivityLog({
+      sessionId: session.id,
+      eventType: 'patch_applied',
+      summary: `Applied ${data.acceptedHunkIds.length} accepted hunk(s) to ${data.filePath}`,
+      details: {
+        filePath: data.filePath,
+        acceptedHunksCount: data.acceptedHunkIds.length,
+        totalHunks: targetFile.hunks.length,
+      },
+      actor: 'user',
     })
 
     return {
@@ -511,3 +552,27 @@ export const removeWorkspaceAction = createServerFn({ method: 'POST' })
     removeWorkspace(data.id)
     return { ok: true }
   })
+
+// ==========================================
+// Activity Logs Management
+// ==========================================
+
+const activityLogsFilterSchema = z.object({
+  sessionId: z.string().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+})
+
+export const getActivityLogsFn = createServerFn({ method: 'GET' })
+  .validator(activityLogsFilterSchema.optional())
+  .handler(async ({ data }) => {
+    const logs = listActivityLogs(data)
+    return { logs }
+  })
+
+export const clearActivityLogsFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ sessionId: z.string().optional() }))
+  .handler(async ({ data }) => {
+    clearActivityLogs(data.sessionId)
+    return { ok: true }
+  })
+

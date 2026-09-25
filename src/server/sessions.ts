@@ -2,6 +2,9 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import type {
+  ActivityActor,
+  ActivityLogEventType,
+  ActivityLogRecord,
   CheckpointRecord,
   DbInfo,
   FileChangeRecord,
@@ -36,6 +39,25 @@ function mapSession(row: Record<string, unknown>): SessionRecord {
     systemPrompt: String(row.system_prompt ?? ''),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
+  }
+}
+
+function mapActivityLog(row: Record<string, unknown>): ActivityLogRecord {
+  let details: Record<string, unknown> = {}
+  try {
+    details = JSON.parse(String(row.details || '{}')) as Record<string, unknown>
+  } catch {
+    details = {}
+  }
+
+  return {
+    id: String(row.id),
+    sessionId: row.session_id ? String(row.session_id) : null,
+    eventType: row.event_type as ActivityLogRecord['eventType'],
+    summary: String(row.summary),
+    details,
+    actor: row.actor as ActivityLogRecord['actor'],
+    createdAt: Number(row.created_at),
   }
 }
 
@@ -235,6 +257,16 @@ function initializeDatabase(db: Database.Database): void {
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT,
+      event_type TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '{}',
+      actor TEXT NOT NULL DEFAULT 'system',
+      created_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_session_id
       ON messages(session_id, created_at);
 
@@ -246,6 +278,12 @@ function initializeDatabase(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_test_runs_session_id
       ON test_runs(session_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_session_id
+      ON activity_logs(session_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at
+      ON activity_logs(created_at DESC);
   `)
 
   // Seed default guardrails if empty
@@ -537,6 +575,18 @@ export function createSessionRecord(input: {
 
   touchWorkspace(input.cwd)
 
+  addActivityLog({
+    sessionId: id,
+    eventType: 'session_created',
+    summary: `Created session with ${input.model}`,
+    details: {
+      cwd: input.cwd,
+      model: input.model,
+      approvalMode: input.approvalMode,
+    },
+    actor: 'user',
+  })
+
   const session = getSessionById(id)
   if (!session) {
     throw new Error('Failed to create the session record.')
@@ -552,6 +602,14 @@ export function updateSessionStatus(
   getDb()
     .prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`)
     .run(status, Date.now(), sessionId)
+
+  addActivityLog({
+    sessionId,
+    eventType: status === 'ended' ? 'session_ended' : 'session_interrupted',
+    summary: `Session marked as ${status}`,
+    details: { status },
+    actor: 'system',
+  })
 }
 
 export function touchSession(sessionId: string): void {
@@ -599,6 +657,14 @@ export function addUserMessage(
     messageId: msgId,
     promptText: content,
     affectedFiles: [],
+  })
+
+  addActivityLog({
+    sessionId,
+    eventType: 'prompt_submitted',
+    summary: `Prompt submitted: ${content.slice(0, 60)}${content.length > 60 ? '…' : ''}`,
+    details: { prompt: content },
+    actor: 'user',
   })
 
   return {
@@ -684,6 +750,18 @@ export function addFileChange(input: {
 
   touchSession(input.sessionId)
   updateLatestCheckpointWithFile(input.sessionId, input.filePath)
+
+  addActivityLog({
+    sessionId: input.sessionId,
+    eventType: 'file_diff_staged',
+    summary: `Staged ${input.changeType}: ${input.filePath}`,
+    details: {
+      filePath: input.filePath,
+      changeType: input.changeType,
+      hasDiff: Boolean(input.diff),
+    },
+    actor: 'codex',
+  })
 
   const row = getDb()
     .prepare(`SELECT * FROM file_changes WHERE id = ?`)
@@ -865,6 +943,18 @@ export async function rollbackToCheckpoint(
     .run(sessionId, targetTimestamp)
 
   touchSession(sessionId)
+
+  addActivityLog({
+    sessionId,
+    eventType: 'checkpoint_rollback',
+    summary: `Rolled back ${uniqueFilesReverted.size} file(s) to checkpoint`,
+    details: {
+      revertedFilesCount: uniqueFilesReverted.size,
+      revertedFiles: Array.from(uniqueFilesReverted),
+      targetTimestamp,
+    },
+    actor: 'user',
+  })
 
   return { revertedFilesCount: uniqueFilesReverted.size }
 }
@@ -1066,6 +1156,19 @@ export function addTestRun(result: TestRunResult): void {
       result.passed ? 1 : 0,
       result.createdAt,
     )
+
+  addActivityLog({
+    sessionId: result.sessionId,
+    eventType: result.passed ? 'test_run_passed' : 'test_run_failed',
+    summary: `Test run ${result.passed ? 'passed' : 'failed'} (${result.durationMs}ms): ${result.command}`,
+    details: {
+      command: result.command,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      passed: result.passed,
+    },
+    actor: 'system',
+  })
 }
 
 export function getLatestTestRun(sessionId: string): TestRunResult | null {
@@ -1076,4 +1179,73 @@ export function getLatestTestRun(sessionId: string): TestRunResult | null {
     .get(sessionId) as Record<string, unknown> | undefined
 
   return row ? mapTestRun(row) : null
+}
+
+export function addActivityLog(input: {
+  sessionId?: string | null
+  eventType: ActivityLogEventType
+  summary: string
+  details?: Record<string, unknown>
+  actor?: ActivityActor
+}): ActivityLogRecord {
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  const detailsJson = JSON.stringify(input.details || {})
+  const actor = input.actor || 'system'
+  const sessionId = input.sessionId || null
+
+  getDb()
+    .prepare(
+      `INSERT INTO activity_logs (id, session_id, event_type, summary, details, actor, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, sessionId, input.eventType, input.summary, detailsJson, actor, now)
+
+  return {
+    id,
+    sessionId,
+    eventType: input.eventType,
+    summary: input.summary,
+    details: input.details || {},
+    actor,
+    createdAt: now,
+  }
+}
+
+export function listActivityLogs(filter?: {
+  sessionId?: string
+  limit?: number
+}): ActivityLogRecord[] {
+  let query = 'SELECT * FROM activity_logs'
+  const params: unknown[] = []
+
+  if (filter?.sessionId) {
+    query += ' WHERE session_id = ?'
+    params.push(filter.sessionId)
+  }
+
+  query += ' ORDER BY created_at DESC'
+
+  if (filter?.limit) {
+    query += ' LIMIT ?'
+    params.push(filter.limit)
+  } else {
+    query += ' LIMIT 100'
+  }
+
+  const rows = getDb().prepare(query).all(...params) as Array<
+    Record<string, unknown>
+  >
+
+  return rows.map(mapActivityLog)
+}
+
+export function clearActivityLogs(sessionId?: string): void {
+  if (sessionId) {
+    getDb()
+      .prepare(`DELETE FROM activity_logs WHERE session_id = ?`)
+      .run(sessionId)
+  } else {
+    getDb().prepare(`DELETE FROM activity_logs`).run()
+  }
 }

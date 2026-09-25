@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
+  Activity,
   Coins,
   FolderGit2,
   FolderPlus,
@@ -10,10 +11,15 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react'
+import ActivityLogsModal from '#/components/ActivityLogsModal'
 import SessionList from '#/components/SessionList'
 import { APPROVAL_MODE_OPTIONS } from '#/lib/constants'
 import type { ApprovalMode, InstructionPreset } from '#/lib/types'
-import { createSession, getHomeData } from '#/server/functions'
+import {
+  clearActivityLogsFn,
+  createSession,
+  getHomeData,
+} from '#/server/functions'
 
 export const Route = createFileRoute('/')({
   loader: async () => getHomeData(),
@@ -24,6 +30,8 @@ function HomePage() {
   const navigate = useNavigate()
   const data = Route.useLoaderData()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false)
+  const [activityLogs, setActivityLogs] = useState(data.activityLogs)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cwd, setCwd] = useState(data.settings.defaultCwd)
@@ -37,6 +45,11 @@ function HomePage() {
   function handleSelectPreset(preset: InstructionPreset): void {
     setSelectedPresetId(preset.id)
     setSystemPrompt(preset.systemPrompt)
+  }
+
+  async function handleClearLogs(): Promise<void> {
+    await clearActivityLogsFn({ data: {} })
+    setActivityLogs([])
   }
 
   async function handleCreateSession(
@@ -92,7 +105,7 @@ function HomePage() {
                 Command Codex with Live Patch Workbenches & Rollbacks.
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                Granular hunk-by-hunk diff staging, side-by-side split review, direct in-browser patch edits, instruction preset pinning, timeline checkpoint rollbacks, token/cost estimation, and auto-approval guardrails.
+                Granular hunk-by-hunk diff staging, side-by-side split review, direct in-browser patch edits, instruction preset pinning, timeline checkpoint rollbacks, real-time token tracking, and auto-approval guardrails.
               </p>
             </div>
 
@@ -105,6 +118,14 @@ function HomePage() {
                 <Plus className="h-4 w-4" />
                 <span>New Session</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setIsLogsModalOpen(true)}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3.5 text-sm font-medium text-slate-200 transition hover:bg-white/10"
+              >
+                <Activity className="h-4 w-4 text-cyan-400" />
+                <span>Activity Audit Logs</span>
+              </button>
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-3 text-xs text-slate-300">
                 <Terminal className="h-3.5 w-3.5 text-slate-400" />
                 <span>Default cwd: {data.settings.defaultCwd}</span>
@@ -112,7 +133,7 @@ function HomePage() {
             </div>
 
             {/* Quick Metrics & Health Badges */}
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <div className="mt-8 grid gap-4 sm:grid-cols-4">
               <article className="rounded-[2rem] border border-white/10 bg-black/30 p-4">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Codex CLI
@@ -139,6 +160,18 @@ function HomePage() {
                 <p className="mt-1 text-sm font-semibold text-amber-200 flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4" />
                   {data.presets.length} presets available
+                </p>
+              </article>
+              <article
+                onClick={() => setIsLogsModalOpen(true)}
+                className="rounded-[2rem] border border-white/10 bg-black/30 p-4 cursor-pointer hover:border-cyan-400/30 transition"
+              >
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Activity Audit
+                </p>
+                <p className="mt-1 text-sm font-semibold text-cyan-300 flex items-center gap-1.5">
+                  <Activity className="h-4 w-4" />
+                  {activityLogs.length} events logged
                 </p>
               </article>
             </div>
@@ -210,6 +243,14 @@ function HomePage() {
           </div>
         </aside>
       </main>
+
+      {/* Global Activity Logs Modal */}
+      <ActivityLogsModal
+        isOpen={isLogsModalOpen}
+        onClose={() => setIsLogsModalOpen(false)}
+        logs={activityLogs}
+        onClearLogs={handleClearLogs}
+      />
 
       {/* New Session Configuration Modal with Presets & Workspaces */}
       {isModalOpen && (
