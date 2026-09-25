@@ -64,7 +64,7 @@ export function readAppSettings(): AppSettings {
     defaultCwd: resolve(expandHomePath(env.CODEX_DEFAULT_CWD || homedir())),
     dataDir,
     dbFile: join(dataDir, 'data.db'),
-    host: env.HOST || process.env.HOST || '127.0.0.1',
+    host: env.HOST || process.env.HOST || '0.0.0.0',
     port: env.PORT || process.env.PORT || '3000',
   }
 }

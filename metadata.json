@@ -1,0 +1,8 @@
+{
+  "name": "Codex Web GUI",
+  "description": "A web interface for managing Codex sessions, terminal outputs, and file diffs.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
